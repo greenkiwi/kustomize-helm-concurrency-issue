@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+# Load background jobs script
+# shellcheck disable=SC1090
+source <(wget -qO- https://raw.githubusercontent.com/shakefu/sh-snippets/main/bash/jobs.sh)
+
+# Constants
+# Suffix where we place files after building them
+BUILD_DIR_SUFFIX="build/kustomize"
+KUSTOMIZE="kustomize build --enable-helm"
+
+# Execute kustomize build with nice logging
+function kustomizeBuild {
+	local kustomizeFile=$1
+	local output=$2
+	echo "Building $kustomizeFile"
+	{
+		local -
+		set +x
+		set -e
+	} 2>/dev/null
+	echo -e " ➢ $KUSTOMIZE ${kustomizeFile} > ${BUILD_DIR_SUFFIX}/${output}"
+	$KUSTOMIZE "${SRC_DIR}/${kustomizeFile}" >"${BUILD_DIR}/${output}"
+	return $?
+}
+
+# Check for external script dependencies and provide sensible errors
+function check_dependencies {
+	if ! command -v wget >/dev/null; then
+		echo "Missing required command: wget"
+		exit 1
+	fi
+
+	# If we are here, then we want to try for the standalone kustomize command
+	# just in case as a back up
+	if ! command -v kustomize >/dev/null; then
+		echo "Missing required command: kubectl kustomize OR kustomize"
+		exit 1
+	fi
+
+	# And if we reach here we have a `kustomize` command, so we can use it
+	# Ouptut the version for debugging's sake
+	log_job "version" kustomize version --short 2>/dev/null
+}
+
+# Display help and exit
+function usage {
+	echo "usage: kustomize-build [-f|--filter <filter-string>] [-o|--output-dir <output_dir>]" >&2
+	echo "Error: Unsupported argument $1" >&2
+}
+
+function main {
+	local log="logger kustomize-build"
+
+	$log "🚀  Kustomize build..."
+
+	check_dependencies
+
+	# Create globals used by subcommands
+	SRC_DIR="$(dirname "${BASH_SOURCE[0]}")"
+
+	BUILD_DIR="${SRC_DIR}/${BUILD_DIR_SUFFIX}"
+
+	# filter from --filter argument
+	while (("$#")); do
+		case "$1" in
+		-f | --filter)
+			shift
+			filter="$1"
+			shift
+			;;
+		-o | --output-dir)
+			shift
+			BUILD_DIR="$1"
+			shift
+			;;
+		--clean)
+			if [[ -d "$BUILD_DIR" ]]; then
+				echo "Cleaning build directory: $BUILD_DIR"
+				rm -rf "$BUILD_DIR"
+			else
+				echo "Skipping clean, directory does not exist: $BUILD_DIR"
+			fi
+			shift
+			;;
+		-*) # unsupported flags
+			usage "$1"
+			;;
+		*) # preserve positional arguments
+			usage "$1"
+			;;
+		esac
+	done
+
+	mkdir -p "${BUILD_DIR}"
+
+	cd "$SRC_DIR"
+
+	$log "🛠 started"
+	KUSTOMIZATION_FILES_BASE=$(find . -name "kustomization.yaml" | grep -i -v component | grep -i base | grep -i "$filter")
+	$log "BASE:"
+	$log "${KUSTOMIZATION_FILES_BASE}"
+
+	KUSTOMIZATION_FILES=$(find . -name "kustomization.yaml" | grep -i -v component | grep -i -v base | grep -i "$filter")
+	$log "CLUSTERS:"
+	$log "${KUSTOMIZATION_FILES}"
+
+	local kustomize_dir
+	local counter
+	local file
+
+	counter=1
+	for file in $KUSTOMIZATION_FILES_BASE; do
+		kustomize_dir=$(dirname "$file")
+		kustomize_dir=${kustomize_dir//\.\//}
+		$log "🛠     ${counter}: ${file} - ${kustomize_dir}"
+		# skip if kustomization.yaml is a component
+		if grep -q "kind: Component" "$file"; then
+			echo "kind: Component >> Skipping..."
+		else
+			log_job "${kustomize_dir}" kustomizeBuild "${kustomize_dir}" "${kustomize_dir//\//_}.yaml" &
+		fi
+
+		((counter += 1))
+	done
+
+  for i in {1..50} ; do
+    for file in $KUSTOMIZATION_FILES; do
+      kustomize_dir=$(dirname "$file")
+      kustomize_dir=${kustomize_dir//\.\//}
+      $log "🛠     ${counter}: ${file} - ${kustomize_dir}"
+      # skip if kustomization.yaml is a component
+      if grep -q "kind: Component" "$file"; then
+        echo "{$i} kind: Component >> Skipping..."
+      else
+        log_job "{$i} ${kustomize_dir}" kustomizeBuild "${kustomize_dir}" "${kustomize_dir//\//_}.yaml" &
+      fi
+      ((counter += 1))
+    done
+  done
+
+
+
+	wait_for_jobs || exit $?
+
+	echo -e "✅  [kustomize] Kustomize build: Done\n"
+}
+
+main "$@"

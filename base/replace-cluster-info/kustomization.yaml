@@ -1,0 +1,83 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+replacements:
+  - source:
+      kind: Namespace
+      name: newrelic
+      fieldPath: metadata.annotations.cluster-name
+    targets:
+      # Build up the replacement line for the multiline configuration strings
+      - select:
+          kind: Namespace
+          name: newrelic
+        fieldPaths:
+          - metadata.annotations.cluster-name-yaml-replace
+        options:
+          delimiter: " "
+          index: 7
+      - select:
+          kind: Deployment
+          name: nri-bundle-nri-metadata-injection
+        fieldPaths:
+          - spec.template.spec.containers.0.env.0.value
+      - select:
+          kind: Deployment
+          name: nri-bundle-nrk8s-controlplane
+        fieldPaths:
+          - spec.template.spec.containers.0.env.1.value
+      - select:
+          kind: Deployment
+          name: nri-bundle-nrk8s-ksm
+        fieldPaths:
+          - spec.template.spec.containers.0.env.1.value
+      - select:
+          kind: DaemonSet
+          name: nri-bundle-nrk8s-kubelet
+        fieldPaths:
+          - spec.template.spec.containers.0.env.1.value
+          - spec.template.spec.containers.1.env.4.value
+      - select:
+          kind: DaemonSet
+          name: nri-bundle-newrelic-logging
+        fieldPaths:
+          - spec.template.spec.containers.0.env.3.value
+  # Replace all the multiline yaml configurations that have cluster-name-to-be-replaced
+  - source:
+      kind: Namespace
+      name: newrelic
+      fieldPath: metadata.annotations.cluster-name-yaml-replace
+    targets:
+      - select:
+          kind: ConfigMap
+          name: nri-bundle-nri-kube-events-config
+        fieldPaths:
+          - data.[config.yaml]
+        options:
+          delimiter: "\n"
+          index: 4
+      - select:
+          kind: ConfigMap
+          name: nri-bundle-nrk8s-agent-controlplane
+        fieldPaths:
+          - data.[newrelic-infra.yml]
+        options:
+          delimiter: "\n"
+          index: 3
+      - select:
+          kind: ConfigMap
+          name: nri-bundle-nrk8s-agent-ksm
+        fieldPaths:
+          - data.[newrelic-infra.yml]
+        options:
+          delimiter: "\n"
+          index: 3
+      - select:
+          kind: ConfigMap
+          name: nri-bundle-nrk8s-agent-kubelet
+        fieldPaths:
+          - data.[newrelic-infra.yml]
+        options:
+          delimiter: "\n"
+          index: 3
+#custom_attributes.clusterName

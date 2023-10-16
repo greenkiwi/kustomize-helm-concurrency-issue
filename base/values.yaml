@@ -1,0 +1,66 @@
+global:
+  cluster: cluster-name-to-be-replaced
+  customSecretName: newrelic-integration
+  customSecretLicenseKey: NEW_RELIC_LICENSE_KEY
+  # https://docs.newrelic.com/docs/kubernetes-pixie/kubernetes-integration/installation/install-kubernetes-integration-using-helm/#reducedataingest
+  lowDataMode: true
+prometheus:
+  # # Install nri-prometheus chart: scrape prometheus metrics for annotated services in the cluster
+  # Collecting prometheus metrics for large clusters might impact data usage significantly
+  enabled: false # default is false
+infrastructure:
+  # Install newrelic-infrastructure chart
+  enabled: true # default is true
+newrelic-infrastructure:
+  verboseLog: false
+  kubeStateMetricsPodLabel: app.kubernetes.io/name=kube-state-metrics
+  kubeStateMetricsPort: 8443
+  # Documentation on controlPlane monitoring
+  #   > Link: https://docs.newrelic.com/docs/kubernetes-pixie/kubernetes-integration/advanced-configuration/configure-control-plane-monitoring/#cloud-control-plane
+  #   > Please note that this only applies to the API Server and that etcd, the scheduler, and the controller manager
+  #   > remain inaccessible in cloud environments.
+  # Notes: This newrelic-infrastructure.controlPlane only works when
+  #   > nri-bundle is on version of `devel`
+  #   > you can enable this by adding `--devel` flag for helm command (upgrade/template)
+  #   > newrelic-infrastructure v3 helm chart: https://artifacthub.io/packages/helm/newrelic/newrelic-infrastructure-v3
+  controlPlane:
+    enable: true
+    affinity:
+      # throws warning when helm overwrites values:
+      #   > known issue: https://github.com/helm/helm/issues/9136
+      nodeAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          nodeSelectorTerms:
+            - matchExpressions:
+                - key: kubernetes.io/arch
+                  operator: Exists
+    kind: Deployment
+    config:
+      etcd:
+        enabled: false # newrelic doesn't support monitoring AWS managed service as for now
+      scheduler:
+        enabled: false # newrelic doesn't support monitoring AWS managed service as for now
+      controllerManager:
+        enabled: false # newrelic doesn't support monitoring AWS managed service as for now
+      apiServer:
+        staticEndpoint:
+          url: "https://kubernetes.default:443"
+          insecureSkipVerify: true
+          auth:
+            type: bearer
+webhook:
+  # Install nri-metadata-injection chart: deploy our webhook to link APM and Kubernetes entities
+  enabled: true # default is true
+nri-metadata-injection:
+  # take advantage of our existing cert-manager to simply deployment and process
+  certManager:
+    enabled: true
+kubeEvents:
+  # Install nri-kube-events chart: report Kubernetes events
+  enabled: true # default is false
+logging:
+  enabled: true
+ksm:
+  # Install kube-state-metrics chart: report Kubernetes metrics
+  # Set this to false because prometheous argo app already manages it
+  enabled: false # default is false

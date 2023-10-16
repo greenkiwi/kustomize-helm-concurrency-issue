@@ -1,0 +1,3 @@
+- op: replace
+  path: /spec/duration
+  value: 8760h0m0s

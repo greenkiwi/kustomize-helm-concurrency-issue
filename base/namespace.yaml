@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: newrelic
+  annotations:
+    cluster-name: unset cluster name
+    cluster-name-yaml-replace: "      clusterName: REPLACE_WITH_CLUSTER_NAME"
